@@ -223,17 +223,6 @@ const Dashboard = () => {
           gap: { xs: 2, md: 0 }
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-            <Avatar
-              sx={{
-                backgroundColor: 'transparent',
-                mr: { xs: 1.5, md: 2 },
-                width: { xs: 40, md: 56 },
-                height: { xs: 40, md: 56 },
-              }}
-              src="/logo.png"
-            >
-              <SmartToy />
-            </Avatar>
             <Box>
               <Typography 
                 variant={{ xs: 'h5', md: 'h4' }} 
@@ -329,11 +318,11 @@ const Dashboard = () => {
         />
         
         <FeatureCard
-          title="Chat com IA"
+          title="Chat Educacional"
           subtitle="Converse com Edu-Ardu e aprenda!"
           icon={<Chat sx={{ fontSize: 24 }} />}
           color="linear-gradient(135deg, #4CAF50 0%, #66BB6A 100%)"
-          badge="Inteligência Artificial"
+          badge="Chat com interação"
           onClick={() => handleCardClick('chat_lessons')}
         />
         
@@ -355,79 +344,6 @@ const Dashboard = () => {
           onClick={() => alert('Progresso em desenvolvimento')}
         />
       </Box>
-
-      {/* Suas Aulas Section */}
-      <Card sx={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', borderRadius: 3 }}>
-        <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-          <Box sx={{ 
-            display: 'flex', 
-            flexDirection: { xs: 'column', sm: 'row' },
-            justifyContent: 'space-between', 
-            alignItems: { xs: 'flex-start', sm: 'center' }, 
-            mb: { xs: 2, md: 3 },
-            gap: { xs: 1, sm: 0 }
-          }}>
-            <Box>
-              <Typography 
-                variant={{ xs: 'h6', md: 'h5' }} 
-                sx={{ fontWeight: 600, color: '#1976D2', mb: { xs: 0.25, md: 0.5 } }}
-              >
-                Suas Aulas
-              </Typography>
-              <Typography 
-                variant={{ xs: 'body2', md: 'body1' }} 
-                sx={{ color: 'text.secondary' }}
-              >
-                Modo offline - suas aulas estão disponíveis!
-              </Typography>
-            </Box>
-            <IconButton
-              sx={{
-                backgroundColor: '#1976D2',
-                color: 'white',
-                width: { xs: 36, md: 48 },
-                height: { xs: 36, md: 48 },
-                '&:hover': { backgroundColor: '#1565C0' },
-              }}
-            >
-              <PlayArrow sx={{ fontSize: { xs: 20, md: 24 } }} />
-            </IconButton>
-          </Box>
-          
-          <Box sx={{ 
-            display: 'grid', 
-            gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' }, 
-            gap: { xs: 1.5, md: 2 } 
-          }}>
-            {[1, 2, 3, 4].map((item) => (
-              <Card
-                key={item}
-                sx={{
-                  background: item % 2 === 0 ? 
-                    'linear-gradient(135deg, #4CAF50 0%, #66BB6A 100%)' : 
-                    'linear-gradient(135deg, #FF9800 0%, #FFB74D 100%)',
-                  color: 'white',
-                  height: { xs: 80, md: 120 },
-                  cursor: 'pointer',
-                  '&:hover': {
-                    transform: 'translateY(-2px)',
-                  },
-                }}
-              >
-                <CardContent sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  height: '100%',
-                  p: { xs: 1, md: 2 }
-                }}>
-                  <SmartToy sx={{ fontSize: { xs: 24, md: 40 } }} />
-                </CardContent>
-              </Card>
-            ))}
-          </Box>
-        </CardContent>
-      </Card>
     </Container>
   );
 };
