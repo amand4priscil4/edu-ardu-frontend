@@ -514,6 +514,16 @@ const ChatAI = () => {
             </Box>
 
             {/* Controles de voz */}
+            <Tooltip title="Testar voz masculina">
+              <IconButton 
+                onClick={() => voiceService.testMaleVoice()} 
+                sx={{ color: 'white', mr: 1 }}
+                size="small"
+              >
+                🎤
+              </IconButton>
+            </Tooltip>
+
             <FormControlLabel
               control={
                 <Switch

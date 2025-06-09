@@ -15,7 +15,7 @@ class VoiceService {
       language: 'pt-BR',
       voice: null, // Será definido automaticamente (masculina)
       rate: 0.9,   // Velocidade adequada para crianças
-      pitch: 0.9,  // Tom masculino (mais grave)
+      pitch: 0.8,  // Tom bem mais grave (masculino)
       volume: 1
     };
 
@@ -62,55 +62,73 @@ class VoiceService {
     const setVoices = () => {
       const voices = this.synthesis.getVoices();
       
+      console.log('🎤 Vozes disponíveis:', voices.map(v => ({ name: v.name, lang: v.lang })));
+      
       // Procura voz masculina em português brasileiro para Edu-Ardu 🤖
-      const preferredVoices = [
-        'Google português do Brasil',
-        'Microsoft Daniel - Portuguese (Brazil)', 
-        'Microsoft Helio - Portuguese (Brazil)',
+      const maleVoices = [
+        // Nomes específicos masculinos
+        'Microsoft Daniel',
+        'Microsoft Helio', 
         'Daniel',
         'Helio',
         'Ricardo',
-        'João'
+        'João',
+        'Carlos',
+        'Bruno',
+        'Paulo',
+        // Google com indicação masculina
+        'Google português do Brasil (male)',
+        'Google português do Brasil masculino'
       ];
 
       let selectedVoice = null;
 
-      // Tenta encontrar voz masculina preferida
-      for (const voiceName of preferredVoices) {
+      // 1. Tenta encontrar voz masculina específica por nome
+      for (const voiceName of maleVoices) {
         selectedVoice = voices.find(voice => 
-          voice.name.includes(voiceName) || 
-          (voice.lang.includes('pt-BR') && 
-           (voice.name.toLowerCase().includes('male') || 
-            voice.name.toLowerCase().includes('daniel') ||
-            voice.name.toLowerCase().includes('helio') ||
-            voice.name.toLowerCase().includes('ricardo')))
+          voice.name.toLowerCase().includes(voiceName.toLowerCase())
         );
-        if (selectedVoice) break;
+        if (selectedVoice) {
+          console.log('🤖 Voz masculina encontrada por nome:', selectedVoice.name);
+          break;
+        }
       }
 
-      // Se não encontrar voz masculina específica, procura qualquer voz masculina em português
+      // 2. Se não encontrar, procura por vozes que NÃO são femininas
       if (!selectedVoice) {
+        const femaleIndicators = ['maria', 'fernanda', 'luciana', 'ana', 'female', 'feminino'];
         selectedVoice = voices.find(voice => 
           voice.lang.includes('pt-BR') && 
-          !voice.name.toLowerCase().includes('female') &&
-          !voice.name.toLowerCase().includes('maria') &&
-          !voice.name.toLowerCase().includes('fernanda') &&
-          !voice.name.toLowerCase().includes('luciana')
+          !femaleIndicators.some(indicator => 
+            voice.name.toLowerCase().includes(indicator)
+          )
         );
+        
+        if (selectedVoice) {
+          console.log('🤖 Voz não-feminina encontrada:', selectedVoice.name);
+        }
       }
 
-      // Se ainda não encontrar, usa qualquer voz em português
+      // 3. Se ainda não encontrar, usa qualquer voz em português
       if (!selectedVoice) {
         selectedVoice = voices.find(voice => voice.lang.includes('pt-BR'));
+        if (selectedVoice) {
+          console.log('🤖 Usando voz padrão PT-BR:', selectedVoice.name);
+        }
       }
 
-      // Se ainda não encontrar, usa voz padrão
+      // 4. Última opção: voz padrão do sistema
       if (!selectedVoice && voices.length > 0) {
         selectedVoice = voices[0];
+        console.log('🤖 Usando voz padrão do sistema:', selectedVoice.name);
       }
 
       this.speechConfig.voice = selectedVoice;
-      console.log('🤖 Voz do Edu-Ardu:', selectedVoice?.name || 'Padrão do sistema');
+      console.log('🤖 Voz final do Edu-Ardu:', selectedVoice?.name || 'Nenhuma encontrada');
+      
+      // Lista todas as vozes PT-BR disponíveis para debug
+      const ptBrVoices = voices.filter(v => v.lang.includes('pt-BR'));
+      console.log('📋 Todas as vozes PT-BR:', ptBrVoices.map(v => v.name));
     };
 
     // Algumas vezes as vozes demoram para carregar
@@ -118,7 +136,67 @@ class VoiceService {
       setVoices();
     } else {
       this.synthesis.addEventListener('voiceschanged', setVoices);
+      // Timeout de segurança
+      setTimeout(setVoices, 1000);
     }
+  }
+
+  /**
+   * Força seleção de voz masculina
+   */
+  selectMaleVoice() {
+    const voices = this.synthesis.getVoices();
+    
+    // Lista específica de vozes masculinas conhecidas
+    const definitelyMaleVoices = [
+      'Daniel',
+      'Helio', 
+      'Ricardo',
+      'João',
+      'Carlos',
+      'Bruno',
+      'Paulo',
+      'Google US English Male',
+      'Microsoft David',
+      'Microsoft Mark'
+    ];
+
+    // Procura por vozes definitivamente masculinas
+    for (const maleName of definitelyMaleVoices) {
+      const voice = voices.find(v => 
+        v.name.toLowerCase().includes(maleName.toLowerCase())
+      );
+      if (voice) {
+        this.speechConfig.voice = voice;
+        console.log('✅ Voz masculina forçada:', voice.name);
+        return voice;
+      }
+    }
+
+    // Se não encontrar, tenta configuração manual
+    const ptVoices = voices.filter(v => v.lang.includes('pt'));
+    console.log('🔍 Vozes portuguesas encontradas:', ptVoices.map(v => ({
+      name: v.name,
+      lang: v.lang,
+      gender: this.guessVoiceGender(v.name)
+    })));
+
+    return null;
+  }
+
+  /**
+   * Tenta adivinhar o gênero da voz pelo nome
+   */
+  guessVoiceGender(voiceName) {
+    const name = voiceName.toLowerCase();
+    
+    const femaleNames = ['maria', 'ana', 'fernanda', 'luciana', 'sofia', 'female', 'feminino'];
+    const maleNames = ['daniel', 'joão', 'carlos', 'bruno', 'paulo', 'ricardo', 'helio', 'male', 'masculino'];
+    
+    if (femaleNames.some(fn => name.includes(fn))) return 'female';
+    if (maleNames.some(mn => name.includes(mn))) return 'male';
+    
+    return 'unknown';
   }
 
   /**
@@ -213,7 +291,7 @@ class VoiceService {
   }
 
   /**
-   * Fala um texto (Text to Speech)
+   * Fala um texto (Text to Speech) com configurações masculinas
    */
   speak(text, options = {}) {
     return new Promise((resolve, reject) => {
@@ -230,22 +308,31 @@ class VoiceService {
 
       const utterance = new SpeechSynthesisUtterance(cleanText);
       
-      // Aplica configurações
+      // Força configurações masculinas
       utterance.lang = this.speechConfig.language;
       utterance.rate = options.rate || this.speechConfig.rate;
-      utterance.pitch = options.pitch || this.speechConfig.pitch;
+      utterance.pitch = options.pitch || 0.7; // FORÇAR tom mais grave
       utterance.volume = options.volume || this.speechConfig.volume;
+      
+      // Tenta forçar voz masculina se disponível
+      if (!this.speechConfig.voice) {
+        this.selectMaleVoice();
+      }
       
       if (this.speechConfig.voice) {
         utterance.voice = this.speechConfig.voice;
+        console.log('🎤 Usando voz:', this.speechConfig.voice.name, 'Pitch:', utterance.pitch);
+      } else {
+        console.warn('⚠️ Nenhuma voz específica definida, usando padrão');
       }
 
       utterance.onstart = () => {
-        console.log('🔊 Começou a falar:', cleanText.substring(0, 50) + '...');
+        console.log('🔊 Edu-Ardu falando:', cleanText.substring(0, 50) + '...');
+        console.log('🎛️ Configurações: Voice=', utterance.voice?.name, 'Pitch=', utterance.pitch, 'Rate=', utterance.rate);
       };
 
       utterance.onend = () => {
-        console.log('🔊 Terminou de falar');
+        console.log('🔊 Edu-Ardu terminou de falar');
         this.currentUtterance = null;
         resolve();
       };
@@ -334,6 +421,49 @@ class VoiceService {
     }
     if (settings.volume !== undefined) {
       this.speechConfig.volume = Math.max(0, Math.min(1, settings.volume));
+    }
+  }
+
+  /**
+   * Testa diferentes vozes masculinas
+   */
+  testMaleVoices() {
+    const voices = this.synthesis.getVoices();
+    const ptVoices = voices.filter(v => v.lang.includes('pt'));
+    
+    console.log('🧪 Testando vozes masculinas disponíveis:');
+    ptVoices.forEach((voice, index) => {
+      console.log(`${index + 1}. ${voice.name} (${voice.lang}) - ${this.guessVoiceGender(voice.name)}`);
+    });
+
+    return ptVoices;
+  }
+
+  /**
+   * Define voz por índice (para teste manual)
+   */
+  setVoiceByIndex(index) {
+    const voices = this.synthesis.getVoices();
+    const ptVoices = voices.filter(v => v.lang.includes('pt'));
+    
+    if (index >= 0 && index < ptVoices.length) {
+      this.speechConfig.voice = ptVoices[index];
+      console.log('✅ Voz alterada para:', ptVoices[index].name);
+      return ptVoices[index];
+    }
+    
+    return null;
+  }
+
+  /**
+   * Teste rápido de voz masculina
+   */
+  async testMaleVoice() {
+    console.log('🎤 Testando voz do Edu-Ardu...');
+    try {
+      await this.speak('Olá! Eu sou o Edu-Ardu, seu robô assistente!', { pitch: 0.6 });
+    } catch (error) {
+      console.error('Erro no teste de voz:', error);
     }
   }
 }
