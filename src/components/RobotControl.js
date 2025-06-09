@@ -42,7 +42,7 @@ import {
 import io from 'socket.io-client';
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'https://api-ea-qrta.onrender.com';
 
 const RobotControl = ({ onBack }) => {
   const [socket, setSocket] = useState(null);
