@@ -18,7 +18,6 @@ import {
   Chat,
   SportsEsports,
   Analytics,
-  PlayArrow,
   SmartToy,
   TrendingUp,
   Home,
