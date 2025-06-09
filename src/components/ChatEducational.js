@@ -13,18 +13,16 @@ import {
   Toolbar,
   Fade,
   Grow,
-  CircularProgress
+  CircularProgress,
+  Alert
 } from '@mui/material';
 import { ArrowBack, Stars, EmojiEvents, SmartToy } from '@mui/icons-material';
-import io from 'socket.io-client';
-
-const API_BASE_URL = 'http://localhost:3000';
+import apiService from '../services/apiService';
 
 const ChatEducational = ({ onBack, lessonType = 'introduction' }) => {
   // Gera userId uma única vez usando useRef
   const userIdRef = useRef('user_' + Math.random().toString(36).substr(2, 9));
   const [messages, setMessages] = useState([]);
-  const [socket, setSocket] = useState(null);
   const [conversationId, setConversationId] = useState(null);
   const [progress, setProgress] = useState({
     totalSteps: 0,
@@ -47,102 +45,198 @@ const ChatEducational = ({ onBack, lessonType = 'introduction' }) => {
     scrollToBottom();
   }, [messages, isEduArduThinking]);
 
+  // Inicializa conversa educacional
   useEffect(() => {
-    // Inicializa WebSocket
-    const newSocket = io(`${API_BASE_URL}/chat`);
-    setSocket(newSocket);
-
-    console.log('Conectando ao WebSocket do chat...');
-
-    // Event listeners do WebSocket
-    newSocket.on('connect', () => {
-      console.log('Conectado ao WebSocket do chat');
-    });
-
-    newSocket.on('conversation_started', data => {
-      console.log('Conversa iniciada:', data);
-      setConversationId(data.conversationId);
-      setMessages([data.message]);
-      setProgress(data.progress);
-      setIsLoading(false);
-    });
-
-    newSocket.on('edu_ardu_thinking', data => {
-      console.log('Edu-Ardu pensando:', data.thinking);
-      setIsEduArduThinking(data.thinking);
-    });
-
-    newSocket.on('edu_ardu_response', data => {
-      console.log('Resposta do Edu-Ardu:', data);
-      setMessages(prev => [...prev, data.message]);
-      setProgress(data.progress);
-      setIsEduArduThinking(false);
-    });
-
-    newSocket.on('badge_earned', data => {
-      console.log('Badge ganho:', data);
-      setNewBadges(data.badges);
-      setTimeout(() => setNewBadges([]), 3000);
-    });
-
-    newSocket.on('error', data => {
-      console.error('Erro do WebSocket:', data);
-      setError(data.message);
-      setIsEduArduThinking(false);
-      setIsLoading(false);
-    });
-
-    newSocket.on('disconnect', () => {
-      console.log('Desconectado do WebSocket do chat');
-    });
-
-    // Inicia conversa após conexão
-    const startConversation = () => {
-      console.log('Iniciando conversa...');
+    const startConversation = async () => {
       setIsLoading(true);
-      newSocket.emit('start_conversation', {
-        userId: userIdRef.current,
-        lessonType: lessonType
-      });
+      setError('');
+
+      try {
+        // Mapeia tipo de lição para idade apropriada
+        const lessonTypeMap = {
+          'introduction': { age: 10, interests: ['robótica básica'], difficultyLevel: 'beginner' },
+          'sensors': { age: 11, interests: ['sensores', 'Arduino'], difficultyLevel: 'beginner' },
+          'programming': { age: 12, interests: ['programação', 'robótica'], difficultyLevel: 'intermediate' },
+          'projects': { age: 12, interests: ['projetos práticos', 'Arduino'], difficultyLevel: 'intermediate' }
+        };
+
+        const userProfile = lessonTypeMap[lessonType] || lessonTypeMap['introduction'];
+
+        console.log('🎓 Iniciando chat educacional:', userProfile);
+
+        const result = await apiService.startEducationalChat(
+          userProfile.age,
+          userProfile.interests,
+          userProfile.difficultyLevel
+        );
+
+        if (result.success) {
+          setConversationId(result.data.conversationId);
+          
+          // Mensagem de boas-vindas do Edu-Ardu
+          const welcomeMessage = {
+            type: 'edu_ardu',
+            content: result.data.welcomeMessage || '👋 Olá! Eu sou o Edu-Ardu, seu robô tutor! Vamos aprender robótica juntos? 🤖⚡',
+            timestamp: new Date(),
+            options: result.data.initialOptions || [
+              { id: 'start', label: 'Vamos começar!', type: 'primary' },
+              { id: 'explain', label: 'Me explique mais sobre robótica', type: 'secondary' }
+            ]
+          };
+
+          setMessages([welcomeMessage]);
+          
+          if (result.data.progress) {
+            setProgress(result.data.progress);
+          }
+        } else {
+          throw new Error(result.error);
+        }
+      } catch (error) {
+        console.error('❌ Erro ao iniciar conversa:', error);
+        setError('Erro ao conectar com Edu-Ardu. Tente novamente.');
+        
+        // Fallback: mensagem offline
+        const offlineMessage = {
+          type: 'edu_ardu',
+          content: '👋 Olá! Eu sou o Edu-Ardu! Parece que estou com problemas de conexão, mas posso te ajudar de forma básica. O que você gostaria de aprender sobre robótica? 🤖',
+          timestamp: new Date(),
+          options: [
+            { id: 'sensors', label: 'Sensores', type: 'primary' },
+            { id: 'motors', label: 'Motores', type: 'primary' },
+            { id: 'arduino', label: 'Arduino', type: 'primary' },
+            { id: 'basic', label: 'Conceitos básicos', type: 'secondary' }
+          ]
+        };
+        setMessages([offlineMessage]);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
-    // Aguarda conexão antes de iniciar conversa
-    if (newSocket.connected) {
-      startConversation();
-    } else {
-      newSocket.on('connect', startConversation);
-    }
+    startConversation();
+  }, [lessonType]);
 
-    return () => {
-      console.log('Cleanup do WebSocket');
-      newSocket.off('connect');
-      newSocket.off('conversation_started');
-      newSocket.off('edu_ardu_thinking');
-      newSocket.off('edu_ardu_response');
-      newSocket.off('badge_earned');
-      newSocket.off('error');
-      newSocket.off('disconnect');
-      newSocket.close();
-    };
-  }, [lessonType, userIdRef]);
-
-  const handleOptionClick = option => {
-    if (!socket || !conversationId) return;
+  const handleOptionClick = async (option) => {
+    if (isEduArduThinking) return;
 
     // Adiciona mensagem do usuário imediatamente na interface
     const userMessage = {
       type: 'user',
-      content: option.label, // Mostra o texto da opção, não o ID
+      content: option.label,
       timestamp: new Date()
     };
     setMessages(prev => [...prev, userMessage]);
+    setIsEduArduThinking(true);
+    setError('');
 
-    // Envia resposta via WebSocket
-    socket.emit('send_message', {
-      conversationId: conversationId,
-      userChoice: option.id,
-      userText: option.label
-    });
+    try {
+      if (conversationId) {
+        // Usa API educacional se disponível
+        const result = await apiService.sendEducationalMessage(
+          conversationId,
+          option.label,
+          'option_selection'
+        );
+
+        if (result.success) {
+          const eduArduMessage = {
+            type: 'edu_ardu',
+            content: result.data.response,
+            timestamp: new Date(),
+            options: result.data.options || []
+          };
+
+          setMessages(prev => [...prev, eduArduMessage]);
+          
+          if (result.data.progress) {
+            setProgress(result.data.progress);
+          }
+
+          // Verifica se ganhou badges
+          if (result.data.badges && result.data.badges.length > 0) {
+            setNewBadges(result.data.badges);
+            setTimeout(() => setNewBadges([]), 3000);
+          }
+        } else {
+          throw new Error(result.error);
+        }
+      } else {
+        // Fallback: usa chat IA normal
+        const sessionId = 'educational_' + userIdRef.current;
+        
+        const contextualMessage = `Como Edu-Ardu, robô educacional para crianças, responda sobre "${option.label}" de forma didática e divertida com emojis. Máximo 3 frases.`;
+        
+        const result = await apiService.sendChatMessage(
+          contextualMessage,
+          sessionId,
+          'robotics_education'
+        );
+
+        if (result.success) {
+          const eduArduMessage = {
+            type: 'edu_ardu',
+            content: result.data.response,
+            timestamp: new Date(),
+            options: generateFollowUpOptions(option.id)
+          };
+
+          setMessages(prev => [...prev, eduArduMessage]);
+        } else {
+          throw new Error(result.error);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro ao enviar mensagem:', error);
+      setError('Erro ao se comunicar com Edu-Ardu. Tente novamente.');
+      
+      // Mensagem de erro amigável
+      const errorMessage = {
+        type: 'edu_ardu',
+        content: 'Ops! Tive um probleminha técnico 🔧 Mas posso tentar responder de outra forma. O que mais você gostaria de saber? 🤖',
+        timestamp: new Date(),
+        options: [
+          { id: 'retry', label: 'Tentar novamente', type: 'primary' },
+          { id: 'basic', label: 'Pergunta mais simples', type: 'secondary' }
+        ]
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsEduArduThinking = false;
+    }
+  };
+
+  // Gera opções de follow-up baseadas no tópico
+  const generateFollowUpOptions = (topicId) => {
+    const followUpMap = {
+      'sensors': [
+        { id: 'ultrasonic', label: 'Sensor ultrassônico', type: 'primary' },
+        { id: 'light', label: 'Sensor de luz', type: 'primary' },
+        { id: 'temperature', label: 'Sensor de temperatura', type: 'secondary' }
+      ],
+      'motors': [
+        { id: 'servo', label: 'Servo motor', type: 'primary' },
+        { id: 'dc', label: 'Motor DC', type: 'primary' },
+        { id: 'stepper', label: 'Motor de passo', type: 'secondary' }
+      ],
+      'arduino': [
+        { id: 'pins', label: 'Pinos do Arduino', type: 'primary' },
+        { id: 'code', label: 'Como programar', type: 'primary' },
+        { id: 'projects', label: 'Projetos legais', type: 'secondary' }
+      ],
+      'basic': [
+        { id: 'what_robot', label: 'O que é um robô?', type: 'primary' },
+        { id: 'how_works', label: 'Como robôs funcionam?', type: 'primary' },
+        { id: 'examples', label: 'Exemplos de robôs', type: 'secondary' }
+      ],
+      'default': [
+        { id: 'more', label: 'Conte mais!', type: 'primary' },
+        { id: 'example', label: 'Me dê um exemplo', type: 'primary' },
+        { id: 'next', label: 'Próximo tópico', type: 'secondary' }
+      ]
+    };
+
+    return followUpMap[topicId] || followUpMap['default'];
   };
 
   const MessageBubble = ({ message, isEduArdu = false }) => (
@@ -170,12 +264,11 @@ const ChatEducational = ({ onBack, lessonType = 'introduction' }) => {
                 width: 40,
                 height: 40,
                 mr: 1,
-                backgroundColor: 'transparent',
+                backgroundColor: 'rgba(156, 39, 176, 0.2)',
                 border: '2px solid rgba(255, 255, 255, 0.3)'
               }}
-              src="/logo.png"
             >
-              <SmartToy />
+              <SmartToy sx={{ color: '#9C27B0' }} />
             </Avatar>
           )}
 
@@ -233,12 +326,11 @@ const ChatEducational = ({ onBack, lessonType = 'introduction' }) => {
             width: 40,
             height: 40,
             mr: 1,
-            backgroundColor: 'transparent',
+            backgroundColor: 'rgba(156, 39, 176, 0.2)',
             border: '2px solid rgba(255, 255, 255, 0.3)'
           }}
-          src="/logo.png"
         >
-          <SmartToy />
+          <SmartToy sx={{ color: '#9C27B0' }} />
         </Avatar>
         <Box
           sx={{
@@ -253,7 +345,7 @@ const ChatEducational = ({ onBack, lessonType = 'introduction' }) => {
         >
           <CircularProgress size={16} />
           <Typography variant="body2" color="text.secondary">
-            Edu-Ardu está pensando...
+            Edu-Ardu está processando...
           </Typography>
         </Box>
       </Box>
@@ -270,14 +362,14 @@ const ChatEducational = ({ onBack, lessonType = 'introduction' }) => {
           backgroundColor:
             option.type === 'primary' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.8)',
           border:
-            option.type === 'primary' ? '2px solid #1976D2' : '1px solid rgba(25, 118, 210, 0.3)',
+            option.type === 'primary' ? '2px solid #9C27B0' : '1px solid rgba(156, 39, 176, 0.3)',
           borderRadius: 3,
           transition: 'all 0.2s ease',
           '&:hover': {
             transform: 'translateY(-2px)',
-            backgroundColor: option.type === 'primary' ? '#1976D2' : 'rgba(255, 255, 255, 0.95)',
+            backgroundColor: option.type === 'primary' ? '#9C27B0' : 'rgba(255, 255, 255, 0.95)',
             color: option.type === 'primary' ? 'white' : 'inherit',
-            boxShadow: '0 8px 25px rgba(25, 118, 210, 0.3)'
+            boxShadow: '0 8px 25px rgba(156, 39, 176, 0.3)'
           }
         }}
       >
@@ -333,16 +425,15 @@ const ChatEducational = ({ onBack, lessonType = 'introduction' }) => {
               width: 40,
               height: 40,
               mr: 2,
-              backgroundColor: 'transparent'
+              backgroundColor: 'rgba(156, 39, 176, 0.2)'
             }}
-            src="/logo.png"
           >
-            <SmartToy />
+            <SmartToy sx={{ color: '#9C27B0' }} />
           </Avatar>
 
           <Box sx={{ flex: 1 }}>
             <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
-              Edu-Ardu
+              Edu-Ardu 🤖
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
               Seu tutor de robótica
@@ -388,6 +479,17 @@ const ChatEducational = ({ onBack, lessonType = 'introduction' }) => {
         )}
       </AppBar>
 
+      {/* Error Alert */}
+      {error && (
+        <Alert 
+          severity="warning" 
+          onClose={() => setError('')}
+          sx={{ m: 1 }}
+        >
+          {error}
+        </Alert>
+      )}
+
       {/* Messages Area */}
       <Box
         sx={{
@@ -430,7 +532,7 @@ const ChatEducational = ({ onBack, lessonType = 'introduction' }) => {
                     fontWeight: 500
                   }}
                 >
-                  Como você responderia?
+                  🤖 Como você responderia?
                 </Typography>
                 {getCurrentOptions().map((option, index) => (
                   <OptionCard key={option.id} option={option} index={index} />
@@ -468,15 +570,6 @@ const ChatEducational = ({ onBack, lessonType = 'introduction' }) => {
             <Typography variant="body2">Você ganhou: {newBadges.join(', ')}</Typography>
           </Box>
         </Fade>
-      )}
-
-      {/* Error Message */}
-      {error && (
-        <Box sx={{ p: 2, backgroundColor: 'rgba(244, 67, 54, 0.9)' }}>
-          <Typography variant="body2" sx={{ color: 'white', textAlign: 'center' }}>
-            {error}
-          </Typography>
-        </Box>
       )}
     </Container>
   );
