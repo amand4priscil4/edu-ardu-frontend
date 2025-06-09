@@ -65,6 +65,7 @@ const ChatEducational = ({ onBack, lessonType = 'introduction' }) => {
         console.log('🎓 Iniciando chat educacional:', userProfile);
 
         const result = await apiService.startEducationalChat(
+          userIdRef.current,
           userProfile.age,
           userProfile.interests,
           userProfile.difficultyLevel
