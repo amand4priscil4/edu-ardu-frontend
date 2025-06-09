@@ -202,7 +202,7 @@ const ChatEducational = ({ onBack, lessonType = 'introduction' }) => {
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setIsEduArduThinking = false;
+      setIsEduArduThinking(false);
     }
   };
 
