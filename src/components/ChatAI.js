@@ -1,38 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  Box,
-  Dialog,
-  Typography,
-  TextField,
-  IconButton,
-  Avatar,
-  Paper,
-  CircularProgress,
-  Fab,
-  AppBar,
-  Toolbar,
-  Chip,
-  InputAdornment,
-  Alert,
-  Tooltip,
-  Switch,
-  FormControlLabel
-} from '@mui/material';
-import {
-  Send,
-  Close,
-  Psychology,
-  Clear,
-  Chat as ChatIcon,
-  Wifi,
-  WifiOff,
-  Mic,
-  MicOff,
-  VolumeUp,
-  VolumeOff
-} from '@mui/icons-material';
-import apiService, { wakeUpAPI, monitorAPIHealth } from '../services/apiService';
-import voiceService from '../services/voiceService';
+import React, { useState, useEffect, useRef } from 'react';
 
 const ChatAI = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -40,694 +6,565 @@ const ChatAI = () => {
   const [currentMessage, setCurrentMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [sessionId] = useState(() => 'session_' + Math.random().toString(36).substr(2, 9));
-  const [apiStatus, setApiStatus] = useState({ isHealthy: false, checking: true });
-  const [error, setError] = useState('');
-  const [isWakingUp, setIsWakingUp] = useState(false);
-  
-  // Estados de voz
-  const [isListening, setIsListening] = useState(false);
+
+  // Estados TTS - Conecta diretamente no frontend
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [robotConnected, setRobotConnected] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [micPermission, setMicPermission] = useState(false);
-  const [interimText, setInterimText] = useState('');
-  const [voiceSupport, setVoiceSupport] = useState({ recognition: false, synthesis: false });
-  
+  const [showTtsSettings, setShowTtsSettings] = useState(false);
+  const [voiceConfig, setVoiceConfig] = useState({
+    rate: 0.85,
+    pitch: 0.8,
+    volume: 1.0
+  });
+  const [ttsError, setTtsError] = useState('');
+  const [lastSpokenMessage, setLastSpokenMessage] = useState('');
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
-
-  const formatTimestamp = useCallback((timestamp) => {
-    return new Date(timestamp).toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }, []);
-
-  const addSystemMessage = useCallback((text, type = 'info') => {
-    const systemMessage = {
-      id: Date.now(),
-      text,
-      sender: 'system',
-      timestamp: new Date(),
-      type
-    };
-    setMessages(prev => [...prev, systemMessage]);
-  }, []);
-
-  const addWelcomeMessage = useCallback(() => {
-    const welcomeMessage = {
-      id: 'welcome',
-      text: '👋 Olá! Eu sou o Edu-Ardu, seu robô assistente especializado em robótica! Você pode falar comigo usando o microfone ou escrever. Como posso te ajudar hoje? 🤖⚡',
-      sender: 'ai',
-      timestamp: new Date(),
-      type: 'welcome'
-    };
-    setMessages([welcomeMessage]);
-  }, []);
-
-  // Inicialização de voz
-  useEffect(() => {
-    const initVoice = async () => {
-      const support = voiceService.getStatus();
-      setVoiceSupport(support.isSupported);
-      
-      if (support.isSupported.recognition) {
-        const hasPermission = await voiceService.requestMicrophonePermission();
-        setMicPermission(hasPermission);
-        
-        if (!hasPermission) {
-          addSystemMessage('⚠️ Permissão de microfone negada. Você pode digitar normalmente!', 'warning');
-        }
-      }
-
-      // Configura callback para texto parcial
-      voiceService.onInterimResult = (text) => {
-        setInterimText(text);
-      };
-    };
-
-    if (isOpen) {
-      initVoice();
-    }
-  }, [isOpen, addSystemMessage]);
-
-  const handleWakeUpAPI = useCallback(async () => {
-    setIsWakingUp(true);
-    setError('Acordando API do Render... Isso pode levar até 30 segundos.');
-    
-    try {
-      const success = await wakeUpAPI();
-      if (success) {
-        setApiStatus({ isHealthy: true, checking: false });
-        setError('');
-        addSystemMessage('✅ API conectada com sucesso!', 'success');
-      } else {
-        setError('Falha ao acordar a API. Tente novamente.');
-      }
-    } catch (error) {
-      setError('Erro ao acordar API: ' + error.message);
-    } finally {
-      setIsWakingUp(false);
-    }
-  }, [addSystemMessage]);
-
-  const checkAPIHealth = useCallback(async () => {
-    setApiStatus({ isHealthy: false, checking: true });
-    
-    try {
-      const health = await monitorAPIHealth();
-      setApiStatus({
-        isHealthy: health.isHealthy,
-        checking: false,
-        responseTime: health.responseTime
-      });
-
-      if (!health.isHealthy) {
-        setError('API está offline. Tentando acordar...');
-        await handleWakeUpAPI();
-      }
-    } catch (error) {
-      setApiStatus({ isHealthy: false, checking: false });
-      setError('Erro ao verificar status da API');
-    }
-  }, [handleWakeUpAPI]);
-
-  const clearChat = useCallback(async () => {
-    try {
-      // Para qualquer fala em andamento
-      voiceService.stopSpeaking();
-      
-      await apiService.clearChatHistory(sessionId);
-      setMessages([]);
-      addWelcomeMessage();
-      setError('');
-    } catch (error) {
-      setError('Erro ao limpar conversa');
-    }
-  }, [sessionId, addWelcomeMessage]);
+  };
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isTyping, scrollToBottom]);
+  }, [messages, isTyping]);
 
-  // Monitora saúde da API ao abrir o chat
   useEffect(() => {
-    if (isOpen) {
-      checkAPIHealth();
-      if (messages.length === 0) {
-        addWelcomeMessage();
-      }
+    if (isOpen && messages.length === 0) {
+      const welcomeMessage = {
+        id: 'welcome',
+        text: '👋 Olá! Eu sou sua assistente de IA do Edu-Ardu. Posso ajudar com dúvidas sobre robótica, programação, eletrônica ou qualquer outro assunto. Minhas respostas podem ser faladas pelo robô automaticamente!',
+        sender: 'ai',
+        timestamp: new Date(),
+        type: 'welcome'
+      };
+      setMessages([welcomeMessage]);
     }
-  }, [isOpen, checkAPIHealth, messages.length, addWelcomeMessage]);
+  }, [isOpen, messages.length]);
 
-  // Inicia gravação de voz
-  const handleStartListening = async () => {
-    if (!voiceSupport.recognition) {
-      setError('Reconhecimento de voz não suportado neste navegador');
-      return;
+  // Verifica conexão com robô periodicamente
+  useEffect(() => {
+    if (isOpen && ttsEnabled) {
+      checkRobotConnection();
+      const interval = setInterval(checkRobotConnection, 15000); // A cada 15 segundos
+      return () => clearInterval(interval);
     }
+  }, [isOpen, ttsEnabled]);
 
-    if (!micPermission) {
-      setError('Permissão de microfone necessária');
-      return;
-    }
+  // ==================== FUNÇÕES TTS FRONTEND ====================
 
+  const checkRobotConnection = async () => {
     try {
-      setIsListening(true);
-      setInterimText('');
-      setError('');
+      const response = await fetch(`${ROBOT_TTS_URL}/api/health`, {
+        method: 'GET',
+        timeout: 5000
+      });
 
-      const transcript = await voiceService.startListening();
-      
-      if (transcript) {
-        setCurrentMessage(transcript);
-        setInterimText('');
-        // Auto-enviar após 1 segundo (para criança não precisar clicar)
-        setTimeout(() => {
-          if (transcript.trim()) {
-            handleSendMessage(transcript);
-          }
-        }, 1000);
+      if (response.ok) {
+        setRobotConnected(true);
+        setTtsError('');
+      } else {
+        setRobotConnected(false);
+        setTtsError('Robô não responde');
       }
     } catch (error) {
-      setError(error.message);
-      setInterimText('');
-    } finally {
-      setIsListening(false);
+      setRobotConnected(false);
+      setTtsError('Robô desconectado');
     }
   };
 
-  // Para gravação de voz
-  const handleStopListening = () => {
-    voiceService.stopListening();
-    setIsListening(false);
-    setInterimText('');
-  };
+  const sendToRobot = async text => {
+    if (!ttsEnabled || !text) return false;
 
-  // Para/inicia fala
-  const handleToggleSpeech = () => {
-    if (isSpeaking) {
-      voiceService.stopSpeaking();
+    try {
+      const payload = {
+        text: text,
+        config: voiceConfig,
+        timestamp: new Date().toISOString(),
+        source: 'edu-ardu-frontend'
+      };
+
+      const response = await fetch(`${ROBOT_TTS_URL}/api/speak`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'EduArdu-Frontend/1.0'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Mensagem enviada para robô:', result);
+
+        setIsSpeaking(true);
+        setLastSpokenMessage(text);
+        setTtsError('');
+
+        // Estima duração da fala (aproximadamente 150 palavras por minuto)
+        const words = text.split(' ').length;
+        const estimatedDuration = (words / 150) * 60 * 1000; // em ms
+        const minDuration = 2000; // mínimo 2 segundos
+        const maxDuration = 15000; // máximo 15 segundos
+
+        const duration = Math.min(Math.max(estimatedDuration, minDuration), maxDuration);
+
+        setTimeout(() => {
+          setIsSpeaking(false);
+        }, duration);
+
+        return true;
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.error('❌ Erro ao enviar para robô:', error);
+      setTtsError(`Erro: ${error.message}`);
       setIsSpeaking(false);
-    } else {
-      setVoiceEnabled(!voiceEnabled);
+      return false;
     }
   };
 
-  const handleSendMessage = async (messageText = null) => {
-    const textToSend = messageText || currentMessage;
-    if (!textToSend.trim() || isTyping) return;
+  const stopRobotSpeech = async () => {
+    try {
+      await fetch(`${ROBOT_TTS_URL}/api/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
 
-    // Verifica se API está saudável
-    if (!apiStatus.isHealthy) {
-      setError('API não está disponível. Clique no ícone de WiFi para reconectar.');
-      return;
+      setIsSpeaking(false);
+      setTtsError('');
+    } catch (error) {
+      console.warn('Erro ao parar fala:', error);
     }
+  };
+
+  const repeatLastMessage = async () => {
+    if (lastSpokenMessage) {
+      await sendToRobot(lastSpokenMessage);
+    }
+  };
+
+  const testRobotSpeech = async () => {
+    const testText =
+      'Olá! Este é um teste do sistema de voz do robô Edu-Ardu. Estou funcionando perfeitamente!';
+    await sendToRobot(testText);
+  };
+
+  // ==================== FUNÇÃO PRINCIPAL DO CHAT ====================
+
+  const handleSendMessage = async () => {
+    if (!currentMessage.trim()) return;
 
     const userMessage = {
       id: Date.now(),
-      text: textToSend,
+      text: currentMessage,
       sender: 'user',
       timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
-    if (!messageText) setCurrentMessage('');
+    const messageText = currentMessage;
+    setCurrentMessage('');
     setIsTyping(true);
-    setError('');
+    setTtsError('');
 
     try {
-      const result = await apiService.sendChatMessage(
-        textToSend,
-        sessionId,
-        'robotics_education'
-      );
+      // Envia para IA (backend)
+      const response = await axios.post(`${API_BASE_URL}/api/ai/chat`, {
+        message: messageText,
+        sessionId: sessionId,
+        context: 'robotics_education'
+      });
 
-      if (result.success) {
-        const aiMessage = {
-          id: Date.now() + 1,
-          text: result.data.response,
-          sender: 'ai',
-          timestamp: new Date(),
-          model: result.data.model || 'AI Assistant',
-          provider: result.data.provider
-        };
+      const aiMessage = {
+        id: Date.now() + 1,
+        text: response.data.response,
+        sender: 'ai',
+        timestamp: new Date(),
+        model: response.data.model || 'AI Assistant',
+        ttsStatus: 'pending'
+      };
 
-        setMessages(prev => [...prev, aiMessage]);
+      setMessages(prev => [...prev, aiMessage]);
 
-        // Fala a resposta automaticamente se habilitado
-        if (voiceEnabled && voiceSupport.synthesis) {
-          try {
-            setIsSpeaking(true);
-            await voiceService.speak(result.data.response);
-          } catch (voiceError) {
-            console.warn('Erro na síntese de voz:', voiceError);
-          } finally {
-            setIsSpeaking(false);
-          }
-        }
-      } else {
-        throw new Error(result.error);
+      // Envia resposta da IA para o robô falar (frontend direto)
+      if (ttsEnabled && response.data.response) {
+        const ttsSuccess = await sendToRobot(response.data.response);
+
+        // Atualiza status TTS na mensagem
+        setMessages(prev =>
+          prev.map(msg =>
+            msg.id === aiMessage.id ? { ...msg, ttsStatus: ttsSuccess ? 'sent' : 'failed' } : msg
+          )
+        );
       }
-
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error);
 
       const errorMessage = {
         id: Date.now() + 1,
-        text: `Desculpe, houve um erro: ${error.message}. Tente novamente! 😊`,
+        text: 'Desculpe, houve um erro ao processar sua mensagem. Tente novamente em alguns instantes.',
         sender: 'ai',
         timestamp: new Date(),
         type: 'error'
       };
 
       setMessages(prev => [...prev, errorMessage]);
-      setError(error.message);
-      
-      // Re-verifica saúde da API em caso de erro
-      checkAPIHealth();
+      setTtsError('Erro na comunicação com IA');
     } finally {
       setIsTyping(false);
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
+  const clearChat = () => {
+    setMessages([]);
+    setTtsError('');
+    setIsSpeaking(false);
+    setLastSpokenMessage('');
+  };
+
+  const formatTimestamp = timestamp => {
+    return new Date(timestamp).toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getTTSStatusIcon = ttsStatus => {
+    switch (ttsStatus) {
+      case 'sent':
+        return <CheckCircle fontSize="small" color="success" />;
+      case 'failed':
+        return <ErrorIcon fontSize="small" color="error" />;
+      default:
+        return null;
     }
   };
 
-  // Componente para bolhas de mensagem otimizado
-  const MessageBubble = useCallback(({ message }) => {
-    const isUser = message.sender === 'user';
-    const isSystem = message.sender === 'system';
-    const isWelcome = message.type === 'welcome';
-    const isError = message.type === 'error';
-    const isSuccess = message.type === 'success';
-
-    let backgroundColor = '#f5f5f5';
-    let textColor = 'inherit';
-
-    if (isUser) {
-      backgroundColor = '#9C27B0';
-      textColor = 'white';
-    } else if (isSystem) {
-      if (isSuccess) backgroundColor = '#E8F5E8';
-      else if (isError) backgroundColor = '#FFEBEE';
-      else backgroundColor = '#E3F2FD';
-    } else if (isWelcome) {
-      backgroundColor = '#E8F5E8';
-    } else if (isError) {
-      backgroundColor = '#FFEBEE';
-    }
-
-    return (
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: isUser ? 'flex-end' : 'flex-start',
-          mb: 2,
-          px: 2
-        }}
-      >
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            flexDirection: isUser ? 'row-reverse' : 'row',
-            maxWidth: '80%'
-          }}
-        >
-          {!isUser && (
-            <Avatar
-              sx={{
-                bgcolor: isSystem 
-                  ? (isSuccess ? '#4CAF50' : isError ? '#f44336' : '#2196F3')
-                  : isWelcome ? '#4CAF50' 
-                  : isError ? '#f44336' 
-                  : '#9C27B0',
-                width: 32,
-                height: 32,
-                mr: isUser ? 0 : 1,
-                ml: isUser ? 1 : 0
-              }}
-            >
-              <Psychology sx={{ fontSize: 18 }} />
-            </Avatar>
-          )}
-
-          <Paper
-            elevation={2}
-            sx={{
-              px: 2,
-              py: 1.5,
-              backgroundColor,
-              color: textColor,
-              borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-              wordBreak: 'break-word'
-            }}
-          >
-            <Typography variant="body1" sx={{ mb: 0.5 }}>
-              {message.text}
-            </Typography>
-            <Typography 
-              variant="caption" 
-              sx={{ 
-                opacity: 0.7,
-                display: 'block',
-                textAlign: isUser ? 'right' : 'left'
-              }}
-            >
-              {formatTimestamp(message.timestamp)}
-              {message.model && ` • ${message.model}`}
-              {message.provider && ` • ${message.provider}`}
-            </Typography>
-          </Paper>
-        </Box>
-      </Box>
-    );
-  }, [formatTimestamp]);
-
-  // Componente para indicador de digitação otimizado
-  const TypingIndicator = useCallback(() => (
-    <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 2, px: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-        <Avatar sx={{ bgcolor: '#9C27B0', width: 32, height: 32, mr: 1 }}>
-          <Psychology sx={{ fontSize: 18 }} />
-        </Avatar>
-        <Paper
-          elevation={1}
-          sx={{
-            px: 2,
-            py: 1,
-            backgroundColor: '#f5f5f5',
-            borderRadius: '18px 18px 18px 4px',
-            display: 'flex',
-            alignItems: 'center'
-          }}
-        >
-          <CircularProgress size={16} sx={{ mr: 1 }} />
-          <Typography variant="body2" color="text.secondary">
-            {isSpeaking ? 'Falando...' : 'Processando...'}
-          </Typography>
-        </Paper>
-      </Box>
-    </Box>
-  ), [isSpeaking]);
-
   return (
     <>
-      {/* Botão flutuante */}
-      <Fab
-        color="secondary"
-        onClick={() => setIsOpen(true)}
-        sx={{
-          position: 'fixed',
-          bottom: 24,
-          right: 24,
-          background: 'linear-gradient(135deg, #9C27B0 0%, #E91E63 100%)',
-          '&:hover': {
-            background: 'linear-gradient(135deg, #7B1FA2 0%, #C2185B 100%)',
-            transform: 'scale(1.1)',
-          },
-          transition: 'all 0.3s ease',
-          zIndex: 1000
-        }}
-      >
-        <ChatIcon />
-      </Fab>
-
-      {/* Modal de tela cheia */}
-      <Dialog
-        open={isOpen}
-        onClose={() => setIsOpen(false)}
-        fullScreen
-        PaperProps={{
-          sx: {
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100vh',
-            m: 0,
-            borderRadius: 0
-          }
-        }}
-      >
-        {/* Header */}
-        <AppBar 
-          position="static" 
-          sx={{ 
-            background: 'linear-gradient(135deg, #9C27B0 0%, #E91E63 100%)',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+      {/* Botão flutuante para abrir chat */}
+      {!isOpen && (
+        <Fab
+          color="primary"
+          aria-label="chat"
+          onClick={() => setIsOpen(true)}
+          sx={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+            '&:hover': {
+              background: 'linear-gradient(45deg, #1976D2 30%, #0288D1 90%)'
+            }
           }}
         >
+          <ChatIcon />
+        </Fab>
+      )}
+
+      {/* Drawer do Chat */}
+      <Drawer
+        anchor="right"
+        open={isOpen}
+        onClose={() => setIsOpen(false)}
+        PaperProps={{
+          sx: { width: { xs: '100%', sm: 400, md: 450 } }
+        }}
+      >
+        {/* Header do Chat */}
+        <AppBar position="static" elevation={0}>
           <Toolbar>
-            <Avatar sx={{ bgcolor: 'rgba(255, 255, 255, 0.2)', mr: 2 }}>
+            <Avatar sx={{ mr: 2, bgcolor: 'white', color: 'primary.main' }}>
               <Psychology />
             </Avatar>
 
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="h6" component="h1">
-                Edu-Ardu 🤖 - Seu Robô Assistente
-              </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="caption" sx={{ opacity: 0.9 }}>
-                  {apiStatus.checking ? 'Verificando conexão...' :
-                   apiStatus.isHealthy ? 'Conectado' : 'Desconectado'}
-                </Typography>
-                {apiStatus.responseTime && (
-                  <Chip 
-                    label={`${apiStatus.responseTime}ms`} 
-                    size="small" 
-                    sx={{ 
-                      height: 16, 
-                      fontSize: '0.7rem',
-                      backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                      color: 'white'
-                    }} 
-                  />
-                )}
+            <Box sx={{ flexGrow: 1 }}>
+              <Typography variant="h6">Assistente IA + Robô</Typography>
+              <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                <Chip size="small" label="Robótica" color="secondary" variant="outlined" />
+                <Chip
+                  size="small"
+                  icon={robotConnected ? <VolumeUp /> : <VolumeOff />}
+                  label={robotConnected ? 'Robô OK' : 'Robô Off'}
+                  color={robotConnected ? 'success' : 'error'}
+                  variant="filled"
+                />
               </Box>
             </Box>
 
-            {/* Controles de voz */}
-            <Tooltip title="Testar voz masculina">
-              <IconButton 
-                onClick={() => voiceService.testMaleVoice()} 
-                sx={{ color: 'white', mr: 1 }}
-                size="small"
-              >
-                🎤
+            <Tooltip title="Configurações TTS">
+              <IconButton color="inherit" onClick={() => setShowTtsSettings(!showTtsSettings)}>
+                <Settings />
               </IconButton>
             </Tooltip>
+
+            <Tooltip title="Fechar">
+              <IconButton color="inherit" onClick={() => setIsOpen(false)}>
+                <Close />
+              </IconButton>
+            </Tooltip>
+          </Toolbar>
+        </AppBar>
+
+        {/* Alerta de erro TTS */}
+        {ttsError && (
+          <Alert severity="warning" sx={{ m: 1 }} onClose={() => setTtsError('')}>
+            {ttsError}
+          </Alert>
+        )}
+
+        {/* Configurações TTS */}
+        <Collapse in={showTtsSettings}>
+          <Paper sx={{ m: 1, p: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              🤖 Configurações do Robô
+            </Typography>
 
             <FormControlLabel
               control={
                 <Switch
-                  checked={voiceEnabled}
-                  onChange={(e) => setVoiceEnabled(e.target.checked)}
-                  size="small"
-                  sx={{ 
-                    '& .MuiSwitch-switchBase.Mui-checked': { color: 'white' },
-                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'rgba(255,255,255,0.3)' }
-                  }}
+                  checked={ttsEnabled}
+                  onChange={e => setTtsEnabled(e.target.checked)}
+                  color="primary"
                 />
               }
-              label={
-                <Typography variant="caption" sx={{ color: 'white' }}>
-                  Voz
-                </Typography>
-              }
-              sx={{ mr: 1 }}
+              label="Ativar Fala do Robô"
             />
 
-            <Tooltip title={isSpeaking ? "Parar fala" : voiceEnabled ? "Voz ativada" : "Voz desativada"}>
-              <IconButton onClick={handleToggleSpeech} sx={{ color: 'white', mr: 1 }}>
-                {isSpeaking ? <VolumeOff /> : voiceEnabled ? <VolumeUp /> : <VolumeOff />}
-              </IconButton>
-            </Tooltip>
-
-            {/* Status da API */}
-            <IconButton 
-              onClick={checkAPIHealth} 
-              sx={{ color: 'white', mr: 1 }}
-              disabled={apiStatus.checking || isWakingUp}
-              title="Verificar conexão da API"
-            >
-              {apiStatus.checking || isWakingUp ? (
-                <CircularProgress size={20} sx={{ color: 'white' }} />
-              ) : apiStatus.isHealthy ? (
-                <Wifi />
-              ) : (
-                <WifiOff />
-              )}
-            </IconButton>
-
-            <IconButton onClick={clearChat} sx={{ color: 'white', mr: 1 }} title="Limpar conversa">
-              <Clear />
-            </IconButton>
-
-            <IconButton onClick={() => setIsOpen(false)} sx={{ color: 'white' }}>
-              <Close />
-            </IconButton>
-          </Toolbar>
-        </AppBar>
-
-        {/* Alert de erro */}
-        {error && (
-          <Alert 
-            severity="warning" 
-            onClose={() => setError('')}
-            sx={{ m: 1 }}
-            action={
-              !apiStatus.isHealthy && (
-                <IconButton
-                  color="inherit"
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12}>
+                <Typography variant="caption">Velocidade: {voiceConfig.rate}</Typography>
+                <Slider
+                  value={voiceConfig.rate}
+                  onChange={(_, value) => setVoiceConfig(prev => ({ ...prev, rate: value }))}
+                  min={0.5}
+                  max={2.0}
+                  step={0.1}
                   size="small"
-                  onClick={handleWakeUpAPI}
-                  disabled={isWakingUp}
-                >
-                  {isWakingUp ? <CircularProgress size={16} /> : <Wifi />}
-                </IconButton>
-              )
-            }
-          >
-            {error}
-          </Alert>
-        )}
+                />
+              </Grid>
 
-        {/* Indicador de escuta */}
-        {isListening && (
-          <Box sx={{ 
-            backgroundColor: '#E3F2FD', 
-            p: 2, 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            borderBottom: '1px solid #e0e0e0'
-          }}>
-            <CircularProgress size={20} sx={{ mr: 1 }} />
-            <Typography variant="body2" color="primary">
-              🎤 Escutando... {interimText && `"${interimText}"`}
+              <Grid item xs={12}>
+                <Typography variant="caption">Tom: {voiceConfig.pitch}</Typography>
+                <Slider
+                  value={voiceConfig.pitch}
+                  onChange={(_, value) => setVoiceConfig(prev => ({ ...prev, pitch: value }))}
+                  min={0.5}
+                  max={2.0}
+                  step={0.1}
+                  size="small"
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Typography variant="caption">Volume: {voiceConfig.volume}</Typography>
+                <Slider
+                  value={voiceConfig.volume}
+                  onChange={(_, value) => setVoiceConfig(prev => ({ ...prev, volume: value }))}
+                  min={0.1}
+                  max={1.0}
+                  step={0.1}
+                  size="small"
+                />
+              </Grid>
+            </Grid>
+
+            <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<VolumeUp />}
+                onClick={testRobotSpeech}
+                disabled={!robotConnected}
+              >
+                Testar
+              </Button>
+
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<Stop />}
+                onClick={stopRobotSpeech}
+                disabled={!isSpeaking}
+                color="error"
+              >
+                Parar
+              </Button>
+
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<Replay />}
+                onClick={repeatLastMessage}
+                disabled={!lastSpokenMessage || !robotConnected}
+              >
+                Repetir
+              </Button>
+            </Box>
+
+            <Typography variant="caption" sx={{ display: 'block', mt: 1, opacity: 0.7 }}>
+              {robotConnected ? '✅ Conectado ao robô' : '❌ Robô desconectado'}
             </Typography>
-          </Box>
-        )}
+          </Paper>
+        </Collapse>
 
-        {/* Messages Area */}
-        <Box
-          sx={{
-            flex: 1,
-            overflowY: 'auto',
-            py: 2,
-            backgroundColor: '#fafafa',
-            display: 'flex',
-            flexDirection: 'column'
-          }}
-        >
-          {messages.map(message => (
-            <MessageBubble key={message.id} message={message} />
-          ))}
-
-          {isTyping && <TypingIndicator />}
-          <div ref={messagesEndRef} />
-        </Box>
-
-        {/* Input Area */}
-        <Box
-          sx={{
-            p: 2,
-            backgroundColor: 'white',
-            borderTop: '1px solid #e0e0e0',
-            boxShadow: '0 -2px 10px rgba(0,0,0,0.05)'
-          }}
-        >
-          <TextField
-            ref={inputRef}
-            fullWidth
-            multiline
-            maxRows={4}
-            value={currentMessage}
-            onChange={e => setCurrentMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder={
-              apiStatus.isHealthy 
-                ? "Digite ou fale sua mensagem..." 
-                : "Conecte-se à API para enviar mensagens..."
-            }
-            disabled={isTyping || !apiStatus.isHealthy || isWakingUp}
-            variant="outlined"
-            size="small"
-            InputProps={{
-              startAdornment: voiceSupport.recognition && (
-                <InputAdornment position="start">
-                  <Tooltip title={isListening ? "Parar gravação (clique)" : micPermission ? "Gravar mensagem de voz" : "Permissão de microfone necessária"}>
-                    <IconButton
-                      onClick={isListening ? handleStopListening : handleStartListening}
-                      disabled={!micPermission || isTyping || !apiStatus.isHealthy}
-                      sx={{
-                        color: isListening ? '#f44336' : micPermission ? '#4CAF50' : '#9E9E9E',
-                        '&:hover': {
-                          backgroundColor: isListening ? 'rgba(244, 67, 54, 0.1)' : 'rgba(76, 175, 80, 0.1)'
-                        }
-                      }}
-                    >
-                      {isListening ? <MicOff /> : <Mic />}
-                    </IconButton>
-                  </Tooltip>
-                </InputAdornment>
-              ),
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => handleSendMessage()}
-                    disabled={!currentMessage.trim() || isTyping || !apiStatus.isHealthy}
-                    color="primary"
+        {/* Área de mensagens */}
+        <Box sx={{ flexGrow: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ flexGrow: 1, overflow: 'auto', p: 1 }}>
+            {messages.map(message => (
+              <Fade in key={message.id}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: message.sender === 'user' ? 'flex-end' : 'flex-start',
+                    mb: 1
+                  }}
+                >
+                  <Paper
+                    elevation={1}
                     sx={{
-                      backgroundColor: currentMessage.trim() && apiStatus.isHealthy ? '#9C27B0' : 'transparent',
-                      color: currentMessage.trim() && apiStatus.isHealthy ? 'white' : 'inherit',
-                      '&:hover': {
-                        backgroundColor: currentMessage.trim() && apiStatus.isHealthy ? '#7B1FA2' : 'rgba(0, 0, 0, 0.04)'
-                      }
+                      p: 2,
+                      maxWidth: '85%',
+                      bgcolor:
+                        message.sender === 'user'
+                          ? 'primary.main'
+                          : message.type === 'error'
+                          ? 'error.light'
+                          : 'grey.100',
+                      color: message.sender === 'user' ? 'white' : 'text.primary'
                     }}
                   >
-                    <Send sx={{ fontSize: 20 }} />
-                  </IconButton>
-                </InputAdornment>
-              ),
-              sx: {
-                borderRadius: 3,
-                backgroundColor: '#f8f9fa'
-              }
-            }}
-          />
+                    <Typography variant="body2">{message.text}</Typography>
 
-          {/* Status e instruções */}
-          <Box sx={{ mt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="caption" color="text.secondary">
-              {voiceSupport.recognition 
-                ? "🎤 Clique no microfone para falar • Enter para enviar" 
-                : "Digite sua mensagem • Enter para enviar"}
-              {!apiStatus.isHealthy && ' • API offline'}
-            </Typography>
-            
-            {voiceSupport.synthesis && (
-              <Typography variant="caption" color="text.secondary">
-                {voiceEnabled ? "🔊 Respostas faladas" : "🔇 Só texto"}
-              </Typography>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        mt: 1
+                      }}
+                    >
+                      <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                        {formatTimestamp(message.timestamp)}
+                      </Typography>
+
+                      {message.sender === 'ai' && (
+                        <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                          {ttsEnabled && getTTSStatusIcon(message.ttsStatus)}
+
+                          {isSpeaking && message.id === messages[messages.length - 1]?.id && (
+                            <Chip
+                              size="small"
+                              icon={<Mic />}
+                              label="Falando"
+                              color="primary"
+                              variant="filled"
+                              sx={{ fontSize: '10px' }}
+                            />
+                          )}
+                        </Box>
+                      )}
+                    </Box>
+                  </Paper>
+                </Box>
+              </Fade>
+            ))}
+
+            {/* Indicador de digitação */}
+            {isTyping && (
+              <Fade in>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 1 }}>
+                  <Paper elevation={1} sx={{ p: 2, bgcolor: 'grey.100' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CircularProgress size={16} />
+                      <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                        {isSpeaking ? 'IA pensando e robô falando...' : 'IA pensando...'}
+                      </Typography>
+                    </Box>
+                  </Paper>
+                </Box>
+              </Fade>
             )}
+
+            <div ref={messagesEndRef} />
           </Box>
 
-          {/* Indicadores de suporte */}
-          {!voiceSupport.recognition && !voiceSupport.synthesis && (
-            <Alert severity="info" sx={{ mt: 1 }}>
-              Este navegador não suporta funcionalidades de voz. Use um navegador moderno como Chrome, Firefox ou Safari.
-            </Alert>
-          )}
+          {/* Área de input */}
+          <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+              <Button size="small" variant="outlined" startIcon={<Clear />} onClick={clearChat}>
+                Limpar
+              </Button>
+
+              {isSpeaking && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="error"
+                  startIcon={<Stop />}
+                  onClick={stopRobotSpeech}
+                >
+                  Parar Robô
+                </Button>
+              )}
+
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<VolumeUp />}
+                onClick={checkRobotConnection}
+              >
+                Testar Robô
+              </Button>
+            </Box>
+
+            <TextField
+              ref={inputRef}
+              fullWidth
+              multiline
+              maxRows={3}
+              placeholder="Digite sua pergunta sobre robótica, programação..."
+              value={currentMessage}
+              onChange={e => setCurrentMessage(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              disabled={isTyping}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      onClick={handleSendMessage}
+                      disabled={isTyping || !currentMessage.trim()}
+                      color="primary"
+                    >
+                      <Send />
+                    </IconButton>
+                  </InputAdornment>
+                )
+              }}
+            />
+
+            <Typography
+              variant="caption"
+              sx={{ mt: 1, display: 'block', textAlign: 'center', opacity: 0.7 }}
+            >
+              {ttsEnabled
+                ? robotConnected
+                  ? '🤖 Respostas serão faladas pelo robô'
+                  : '⚠️ Robô desconectado'
+                : 'Fala do robô desabilitada'}
+            </Typography>
+          </Box>
         </Box>
-      </Dialog>
+      </Drawer>
     </>
   );
 };
