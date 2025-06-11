@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { CheckCircle, Error as ErrorIcon, Chat as ChatIcon } from '@mui/icons-material';
 
 const ChatAI = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -57,7 +58,7 @@ const ChatAI = () => {
 
   const checkRobotConnection = async () => {
     try {
-      const response = await fetch(`${https:/robot-mouth-pwa.vercel.app/}/api/health`, {
+      const response = await fetch(`https://robot-mouth-pwa.vercel.app/api/health`, {
         method: 'GET',
         timeout: 5000
       });
