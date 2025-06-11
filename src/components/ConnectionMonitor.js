@@ -208,7 +208,7 @@ const ConnectionMonitor = () => {
 
       if (!aiResponse.ok) throw new Error('IA não respondeu');
 
-      const aiData = await aiResponse.json();
+      await aiResponse.json(); // Just consume the response
       setTestResults(prev => ({ ...prev, ai: '✅ Funcionando' }));
       addLog('✅ IA respondeu corretamente', 'success', 'test');
 
