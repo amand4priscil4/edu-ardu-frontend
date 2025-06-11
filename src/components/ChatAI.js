@@ -57,7 +57,7 @@ const ChatAI = () => {
 
   const checkRobotConnection = async () => {
     try {
-      const response = await fetch(`${ROBOT_TTS_URL}/api/health`, {
+      const response = await fetch(`${https:/robot-mouth-pwa.vercel.app/}/api/health`, {
         method: 'GET',
         timeout: 5000
       });
